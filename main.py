@@ -2,7 +2,6 @@
 import re
 from matplotlib import pyplot as plt
 from sklearn import linear_model
-from sklearn.neural_network import MLPRegressor
 
 # =============================================================================
 # Number of days of every month
@@ -167,14 +166,6 @@ if __name__ == '__main__':
 #     LSE拟合
 # =============================================================================
     clf = linear_model.LinearRegression()
-    
-# =============================================================================
-#     Neural network拟合
-# =============================================================================
-#    clf = MLPRegressor(solver='sgd',
-#                       alpha=1e-5,
-#                       hidden_layer_sizes=(50, 50),
-#                       random_state=1)
     
 # =============================================================================
 #     预测
