@@ -37,6 +37,7 @@ global DimToBeOptimized
 global HistoryTime_Begin
 global PredictTime_Begin
 global PredictTime_End
+global FlavorNum
 
 # =============================================================================
 # physical server class definition
@@ -135,10 +136,11 @@ def readData():
     global HistoryTime_Begin
     global PredictTime_Begin
     global PredictTime_End
+    global FlavorNum
     
     # Read input file
     nowBlock = 0
-    flavorNum = 0
+    FlavorNum = 0
     flavorList = []
     f = open(INPUT, 'r+', encoding='utf-8')
     for line in f:
@@ -154,8 +156,8 @@ def readData():
                 nowBlock += 1
             else:
                 if nowBlock == 1:
-                    flavorNum = int(line)
-                    for i in range(flavorNum):
+                    FlavorNum = int(line)
+                    for i in range(FlavorNum):
                         line = f.readline()
                         Space_1 = line.find(' ')
                         Space_2 = line.find(' ', Space_1+1)
@@ -295,8 +297,8 @@ if __name__ == '__main__':
     for i in range(TOTAL_FLAVOR):
         clf.append(MLPRegressor(solver='sgd',
                            alpha=1e-5,
-                           hidden_layer_sizes=(80, 80, 160),
-                           random_state=1))
+                           hidden_layer_sizes=(200, 200),
+                           random_state=0))
         clf[i].fit(x[i][:time_split], y[i][:time_split])
     
 # =============================================================================
@@ -304,12 +306,25 @@ if __name__ == '__main__':
 # =============================================================================
     
     y_predict = []
+    sum_1 = 0
+    sum_2 = 0
+    sum_3 = 0
     
-    for i in range(TOTAL_FLAVOR):
+    for i in range(FlavorNum):
    
         y_predict.append(clf[i].predict(x[i][time_split+1:]))
     
-        y_predict[i][0] = round(y_predict[i][0])
+        if y_predict[i][0] < 0:
+            y_predict[i][0] = 0
+        else:
+            y_predict[i][0] = round(y_predict[i][0])
         
         print('Flavor' + str(i+1) + ':')
         print('Prediction: ' + str(y_predict[i][0]) + '\nActual: ' + str(y[i][-1]) + '\n')
+        
+        sum_1 += math.pow((y_predict[i][0] - y[i][-1]), 2)
+        sum_2 += math.pow((y_predict[i][0]), 2)
+        sum_3 += math.pow(y[i][-1], 2)
+    
+    score_1 = (1 - math.sqrt(sum_1 / FlavorNum) / (math.sqrt(sum_2 / FlavorNum) + math.sqrt(sum_3 / FlavorNum)))
+    print(score_1)
