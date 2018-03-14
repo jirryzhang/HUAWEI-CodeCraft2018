@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import re
+import math
+import copy
 from matplotlib import pyplot as plt
 from sklearn import linear_model
 from sklearn.neural_network import MLPRegressor
@@ -21,13 +23,25 @@ Month[10] = 31
 Month[11] = 30
 Month[12] = 31
 
-H = 12
-N = 8
+INPUT = './input_5flavors_cpu_7days.txt.'
+TEST = './TestData_2015.2.20_2015.2.27.txt'
+TRAIN = 'TrainData_2015.1.1_2015.2.19.txt'
+
+H = 24
+N = 7
+TOTAL_FLAVOR = 15
+
+global SamplePS
+global SampleVM
+global DimToBeOptimized
+global HistoryTime_Begin
+global PredictTime_Begin
+global PredictTime_End
 
 # =============================================================================
 # physical server class definition
 # =============================================================================
-class physical_server:
+class PhysicalServer:
     
     def __init__(self, cpu, mem, sto):
         self.cpu = cpu
@@ -38,13 +52,13 @@ class physical_server:
         self.rest_sto = sto
         self.vm = []
     
-    def add_vm(self, vm):
+    def addVm(self, vm):
         self.vm.append(vm)
         self.rest_cpu -= vm.cpu
         self.rest_mem -= vm.mem
         self.rest_sto -= vm.sto
         
-    def rm_vm(self, num):
+    def rmVm(self, num):
         self.rest_cpu += self.vm[num].cpu
         self.rest_mem += self.vm[num].mem
         self.rest_sto += self.vm[num].sto
@@ -65,37 +79,34 @@ class physical_server:
         for i in range(len(self.vm)):
             print('  VM ' + str(i) + ': ')
             self.vm[i].state()
+        print('\n')
         
    
 # =============================================================================
 # virtual machine class definition
 # =============================================================================
-class virtual_machine:
+class VirtualMachine:
     
-    def __init__(self, cpu, mem, sto):
+    def __init__(self, num, cpu, mem):
+        self.num = num
         self.cpu = cpu
         self.mem = mem
-        self.sto = sto
     
     def state(self):
-        print('    CPU: ' + str(self.cpu) + '\n' +
-              '    Memory: ' + str(self.mem) + '\n' +
-              '    Storage: ' + str(self.sto))
+        print('Flavor' + str(self.num) + ': \n'
+              '    CPU: ' + str(self.cpu) + '\n' +
+              '    Memory: ' + str(self.mem) + '\n')
         
         
 # =============================================================================
 # Convert time into value
 # =============================================================================
-def time2value(time):
+def time2val(time):
     
     #yyyy = time[0:4]
     mm = time[5:7]
     dd = time[8:10]
     hh = time[11:13]
-    #print(yyyy)
-    #print(mm)
-    #print(dd)
-    #print(hh)
     
     # Convertion
     #yyyy *= 365 * 24
@@ -109,38 +120,134 @@ def time2value(time):
     for i in range(0, mm):
         value += Month[i+1] * 24
     value += (dd-1) * 24 + hh
+    
     return int(value / H)
         
 
 # =============================================================================
-# Read data from txt and get the time vector
+# Read data from given txt
 # =============================================================================
-def read_data(path):
+def readData():
     
-    f = open(path, encoding='utf-8')
+    global SamplePS
+    global SampleVM
+    global DimToBeOptimized
+    global HistoryTime_Begin
+    global PredictTime_Begin
+    global PredictTime_End
     
-    mList = [[0]for i in range(15)];
-    
+    # Read input file
+    nowBlock = 0
+    flavorNum = 0
+    flavorList = []
+    f = open(INPUT, 'r+', encoding='utf-8')
     for line in f:
-        
-        time = re.search('(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d)', line).group()
-        flavor = int(re.search('\d', re.search('flavor\d*', line).group()).group())
-        
-        if time is not None:
-            value = time2value(time)
-            for i in range(len(mList[flavor]), value+1):
-                for j in range(15):
-                    mList[j].append(0)
-            mList[flavor][value] += 1
-                
-#    print(mList)
-#    plt.plot(mList[1])
-#    for i in range(15):
-#        if len(mList[i]) > 1:
-#            plt.plot(mList[1])
-#            print(mList[i])
+        if line is not '\n':
+            if nowBlock == 0:
+                Space_1 = line.find(' ')
+                Space_2 = line.find(' ', Space_1+1)
+                CPU = int(line[0:Space_1])
+                MEM = int(line[Space_1:Space_2])
+                STO = int(line[Space_2:])
+                SamplePS = PhysicalServer(CPU, MEM, STO)
+                SamplePS.state()
+                nowBlock += 1
+            else:
+                if nowBlock == 1:
+                    flavorNum = int(line)
+                    for i in range(flavorNum):
+                        line = f.readline()
+                        Space_1 = line.find(' ')
+                        Space_2 = line.find(' ', Space_1+1)
+                        Space_3 = line.find('\n', Space_2+1)
+                        NUM = int(line[6:Space_1])
+                        CPU = int(line[Space_1:Space_2])
+                        MEM = int(line[Space_2:Space_3])
+                        tempVM = VirtualMachine(NUM, CPU, MEM)
+                        SampleVM.append(tempVM)
+                        flavorList.append(NUM)
+                        tempVM.state()
+                    nowBlock += 1
+                else:
+                    if nowBlock == 2:
+                        DimToBeOptimized = line.replace('\n', '')
+                        print('The dimension to be optimized is: ' + DimToBeOptimized)
+                        nowBlock += 1
+                    else:
+                        if nowBlock == 3:
+                            PredictTime_Begin = line.replace('\n', '')
+                            PredictTime_End = f.readline().replace('\n', '')
+                            print('Predict time begin at: ' + PredictTime_Begin)
+                            print('Predict time end at: ' + PredictTime_End)
+                            print('\n')
+            
     
-    return mList[1]
+    # Read the beginning time
+    line = open(TRAIN, encoding='utf-8').readline()
+    Space_1 = line.find('\t')
+    Space_2 = line.find('\t', Space_1+1)
+    HistoryTime_Begin = line[Space_2+1:].replace('\n', '')
+    
+    historyData = [[0]for i in range(TOTAL_FLAVOR)]
+    for i in range(TOTAL_FLAVOR):
+        for j in range(time2val(HistoryTime_Begin), time2val(PredictTime_Begin)):
+            historyData[i].append(0)
+            
+    testData = [[0]for i in range(TOTAL_FLAVOR)]
+    for i in range(TOTAL_FLAVOR):
+        for j in range(time2val(PredictTime_Begin), time2val(PredictTime_End)+1):
+            testData[i].append(0)
+            
+    # Read history data
+    for line in open(TRAIN, encoding='utf-8'):
+        Space_1 = line.find('\t')
+        Space_2 = line.find('\t', Space_1+1)
+        tempFlavor = int(line[Space_1+7:Space_2])
+        tempTime = line[Space_2+1:].replace('\n', '')
+        if tempTime is not None:
+            value = time2val(tempTime)
+            if tempFlavor <= TOTAL_FLAVOR:
+                historyData[tempFlavor-1][value] += 1
+            else:
+                None
+#                print('Flavor data error.\n')
+#                print('Now flavor: ' + str(tempFlavor))
+        else:
+            print('Time data error.\n')
+            
+                
+    # Print history data
+    print('History data: ')
+    print('Total diffs: ' + str(value+1))
+    for i in range(TOTAL_FLAVOR):
+        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(historyData[i])) + ')\n' + str(historyData[i]))
+        
+    # Read test data
+    for line in open(TEST, encoding='utf-8'):
+        Space_1 = line.find('\t')
+        Space_2 = line.find('\t', Space_1+1)
+        tempFlavor = int(line[Space_1+7:Space_2])
+        tempTime = line[Space_2+1:].replace('\n', '')
+        if tempTime is not None:
+            value = time2val(tempTime) - time2val(PredictTime_Begin)
+            if tempFlavor <= TOTAL_FLAVOR:
+                testData[tempFlavor-1][value] += 1
+            else:
+                None
+#                print('Flavor data error.\n')
+#                print('Now flavor: ' + str(tempFlavor))
+        else:
+            print('Time data error.\n')
+            
+                
+    # Print history data
+    print('Test data: ')
+    print('Total diffs: ' + str(value+1))
+    for i in range(15):
+        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(testData[i])) + ')\n' + str(testData[i]))
+    print('\n')
+#    plt.plot(historyData[2])
+    return historyData, testData
 
 
 # =============================================================================
@@ -148,50 +255,61 @@ def read_data(path):
 # =============================================================================
 if __name__ == '__main__':
     
-    ps = physical_server(56, 128, 1200)
-    vm = virtual_machine(28, 64, 600)
-    ps.add_vm(vm)
-    ps.rm_vm(0)
-    #ps.state()
-    time_array = read_data('./put_together.txt')
-    x = []
-    y = []
-    for i in range(N, len(time_array)):
-        x.append(time_array[i-N : i-1])
-        y.append(time_array[i])
+    trainData, testData = readData()
+    mixedData = copy.deepcopy(trainData)
+    for i in range(TOTAL_FLAVOR):
+        for j in range(len(testData[i])):
+            mixedData[i].append(testData[i][j])
     
-    total = len(x)
-    part = int(total * 7 / 10)
+    finalData = copy.deepcopy(mixedData)
+    time_split = time2val(PredictTime_Begin)
+    
+    x = [[]for i in range(TOTAL_FLAVOR)]
+    y = [[]for i in range(TOTAL_FLAVOR)]
+    
+    for i in range(TOTAL_FLAVOR):
+        for j in range(N, len(mixedData[i])-1):
+            finalData[i][j+1] = sum(mixedData[i][j-N:j-1])
+            x[i].append(finalData[i][j-N:j])
+            y[i].append(finalData[i][j+1])
+            
+    print('Final Data:')
+    for i in range(TOTAL_FLAVOR):
+        print('Flavor' + str(i+1) + ':\n' + str(finalData[i]))
+        
+    print('X:')
+    print(x[0])
 
 # =============================================================================
 #     LSE拟合
 # =============================================================================
-    clf = linear_model.LinearRegression()
+    clf = []
+    for i in range(TOTAL_FLAVOR):
+        clf.append(linear_model.LinearRegression())
+        clf[i].fit(x[i][:time_split], y[i][:time_split])
     
 # =============================================================================
 #     Neural network拟合
 # =============================================================================
-#    clf = MLPRegressor(solver='sgd',
-#                       alpha=1e-5,
-#                       hidden_layer_sizes=(50, 50),
-#                       random_state=1)
+    clf = []
+    for i in range(TOTAL_FLAVOR):
+        clf.append(MLPRegressor(solver='sgd',
+                           alpha=1e-5,
+                           hidden_layer_sizes=(80, 80, 160),
+                           random_state=1))
+        clf[i].fit(x[i][:time_split], y[i][:time_split])
     
 # =============================================================================
 #     预测
 # =============================================================================
-    clf.fit(x[:part], y[:part])
-    predictX = clf.predict(x[part:])
     
-    for i in range(len(predictX)):
-        predictX[i] = round(predictX[i])
-    testY = y[part:]
+    y_predict = []
     
-    print(sum(testY))
-    print(sum(predictX))
-    plt.plot(predictX)
-    plt.plot(testY)
-#    print(clf.coef_)
+    for i in range(TOTAL_FLAVOR):
+   
+        y_predict.append(clf[i].predict(x[i][time_split+1:]))
     
+        y_predict[i][0] = round(y_predict[i][0])
         
-    
-        
+        print('Flavor' + str(i+1) + ':')
+        print('Prediction: ' + str(y_predict[i][0]) + '\nActual: ' + str(y[i][-1]) + '\n')
