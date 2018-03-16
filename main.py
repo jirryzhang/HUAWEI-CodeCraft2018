@@ -2,6 +2,7 @@
 import re
 import math
 import copy
+import numpy as np
 from matplotlib import pyplot as plt
 from sklearn import linear_model
 from sklearn.neural_network import MLPRegressor
@@ -195,10 +196,10 @@ def readData():
         for j in range(time2val(HistoryTime_Begin), time2val(PredictTime_Begin) - 1):
             historyData[i].append(0)
             
-    testData = [[0]for i in range(TOTAL_FLAVOR)]
+    futureData = [[0]for i in range(TOTAL_FLAVOR)]
     for i in range(TOTAL_FLAVOR):
         for j in range(time2val(PredictTime_Begin), time2val(PredictTime_End) - 1):
-            testData[i].append(0)
+            futureData[i].append(0)
             
     # Read history data
     for line in open(TRAIN, encoding='utf-8'):
@@ -233,7 +234,7 @@ def readData():
         if tempTime is not None:
             value = time2val(tempTime) - time2val(PredictTime_Begin) - 1
             if tempFlavor <= TOTAL_FLAVOR:
-                testData[tempFlavor-1][value] += 1
+                futureData[tempFlavor-1][value] += 1
             else:
                 None
 #                print('Flavor data error.\n')
@@ -243,12 +244,12 @@ def readData():
             
                 
     # Print history data
-    print('Test data: ')
-    print('Total diffs: ' + str(len(testData[0])))
+    print('Future data: ')
+    print('Total diffs: ' + str(len(futureData[0])))
     for i in range(TOTAL_FLAVOR):
-        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(testData[i])) + ')\n' + str(testData[i]) + '\n')
+        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(futureData[i])) + ')\n' + str(futureData[i]) + '\n')
 #    plt.plot(historyData[2])
-    return historyData, testData
+    return historyData, futureData
 
 # =============================================================================
 # 差分数据
@@ -299,42 +300,34 @@ def listAsigmoid(dataset):
 if __name__ == '__main__':
 
 
-    trainData, testData = readData()
+    historyData, futureData = readData()
     
-#    for i in range(TOTAL_FLAVOR):
-#        trainData[i] = listSigmoid(trainData[i])
-#        testData[i] = listSigmoid(testData[i])
-
-    mixedData = copy.deepcopy(trainData)
+    # 以七天为单位加和
+    historyData_copy = copy.deepcopy(historyData)
     for i in range(TOTAL_FLAVOR):
-        for j in range(len(testData[i])):
-            mixedData[i].append(testData[i][j])
-    
-    print('Mixed Data:')
-    print('Total diffs: ' + str(len(mixedData[0])))
+        for j in range(N-1, len(historyData[i])):
+            historyData[i][j] = sum(historyData_copy[i][j-N+1:j])
+    print('History data: ')
+    print('Total diffs: ' + str(len(historyData[0])))
     for i in range(TOTAL_FLAVOR):
-        print('Flavor' + str(i+1) + ':\n' + str(mixedData[i]) + '\n')
+        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(historyData[i])) + ')\n' + str(historyData[i]) + '\n')
         
-    finalData = copy.deepcopy(mixedData)
-    time_split = time2val(PredictTime_Begin)
-    
+    # 抽取特征矩阵
     x = [[]for i in range(TOTAL_FLAVOR)]
     y = [[]for i in range(TOTAL_FLAVOR)]
-    
     for i in range(TOTAL_FLAVOR):
-        for j in range(N, len(mixedData[i])+1):
-            finalData[i][j-1] = sum(mixedData[i][j-N:j])
-            x[i].append(finalData[i][j-N:j-1])
-            y[i].append(finalData[i][j-1])
-    
-# 改变
-# 高斯核局部加权
-    for i in range(TOTAL_FLAVOR):
-        for j in range(len(x[i])):
-            for k in range(len(x[i][j])):
-                p = 0.0044
-                w = math.exp(- math.pow(x[i][j][k] - x[i][j][-1], 2) / 2 * p)
-                x[i][j][k] = w * x[i][j][k]
+        for j in range(N-1, len(historyData[i])-N):
+            x[i].append(historyData[i][j+1:j+N])
+            y[i].append(historyData[i][j+N])
+            
+    # 高斯核局部加权
+#    for i in range(TOTAL_FLAVOR):
+#        for j in range(len(x[i])):
+#            for k in range(len(x[i][j])):
+#                p = 0.0046
+#                w = math.exp(- math.pow(x[i][j][k] - x[i][j][-1], 2) / 2 * p)
+#                x[i][j][k] = w * x[i][j][k]
+                
 # 追加
 #    for i in range(TOTAL_FLAVOR):
 #        for j in range(len(x[i])):
@@ -342,68 +335,50 @@ if __name__ == '__main__':
 #            x[i][j].append(1)
 #            for k in range(len(x[i][j])):
 #                x[i][j].append(sigmoid(x[i][j][k]))
-            
-    print('Final Data:')
-    print('Total diffs: ' + str(len(finalData[0])))
+    
+    # LSE拟合
+    lse_clf = []
     for i in range(TOTAL_FLAVOR):
-        print('Flavor' + str(i+1) + ':\n' + str(finalData[i]) + '\n')
+        lse_clf.append(linear_model.LinearRegression())
+        lse_clf[i].fit(x[i][:], y[i][:])
         
-    print('X:\n')
-    print(x[1])
-    
-# =============================================================================
-#     LSE拟合
-# =============================================================================
-    clf = []
+    # Neural network拟合
+    nn_clf = []
     for i in range(TOTAL_FLAVOR):
-        clf.append(linear_model.LinearRegression())
-        clf[i].fit(x[i][:time_split], y[i][:time_split])
-    
-# =============================================================================
-#     Neural network拟合
-# =============================================================================
-#    clf = []
-#    for i in range(TOTAL_FLAVOR):
-#        clf.append(MLPRegressor(solver='sgd',
-#                           alpha=1e-5,
-#                           hidden_layer_sizes=(100, 40),
-#                           random_state=0))
-#        clf[i].fit(x[i][:time_split], y[i][:time_split])
-    
-# =============================================================================
-#     HMM拟合
-# =============================================================================
-#    clf = []
-#    for i in range(TOTAL_FLAVOR):
-#        clf.append(GaussianHMM(n_components=5, covariance_type='diag', n_iter=4000).fit(x[i]))
+        nn_clf.append(MLPRegressor(solver='sgd',
+                           alpha=1e-5,
+                           hidden_layer_sizes=(2, 5),
+                           random_state=0))
+        nn_clf[i].fit(x[i][:], y[i][:])
         
-# =============================================================================
-#     预测
-# =============================================================================
-    
-    y_predict = []
-    sum_1 = 0
-    sum_2 = 0
-    sum_3 = 0
-    
+    # 预测
     for i in range(TOTAL_FLAVOR):
-   
-        y_predict.append(clf[i].predict(x[i][time_split:]))
-    
-#        if y_predict[i][0] < 0:
-#            y_predict[i][0] = 0
-#        else:
-#            y_predict[i][0] = round(y_predict[i][0])
+        for j in range(N):
+            historyData[i].append(lse_clf[i].predict(x[i][-1:])[0])
+            x[i].append(historyData[i][-N:-1])
         
-#        y[i][-1] = asigmoid(y[i][-1])
-#        y_predict[i][0] = asigmoid(y_predict[i][0])
-        
+    for i in range(TOTAL_FLAVOR):
         print('Flavor' + str(i+1) + ':')
-        print('Prediction: ' + str(y_predict[i][0]) + '\nActual: ' + str(y[i][-1]) + '\n')
+        print('Prediction: ' + str(historyData[i][-7]) + '\nActual: ' + str(y[i][-7]) + '\n')
         
-        sum_1 += math.pow((y_predict[i][0] - y[i][-1]), 2)
-        sum_2 += math.pow((y_predict[i][0]), 2)
-        sum_3 += math.pow(y[i][-1], 2)
+    print(np.array(historyData))
     
-    score_1 = (1 - math.sqrt(sum_1 / FlavorNum) / (math.sqrt(sum_2 / FlavorNum) + math.sqrt(sum_3 / FlavorNum)))
-    print(score_1)
+#    MODE = 'score'
+#    MODE = 'graphical'
+    
+#    for i in range(TOTAL_FLAVOR):
+#        
+#        if MODE is 'graphical':
+#            y_predict.append(lse_clf[i].predict(x[i]))
+#            plt.figure(i)
+#            plt.plot(y_predict[i])
+#            plt.plot(finalData[i][N-1:time_split])
+#            
+#        else:
+#            sum_1 += math.pow((y_predict[i] - y[i][-t]), 2)
+#            sum_2 += math.pow((y_predict[i]), 2)
+#            sum_3 += math.pow(y[i][-t], 2)
+#        
+#    
+#    score_1 = (1 - math.sqrt(sum_1 / FlavorNum) / (math.sqrt(sum_2 / FlavorNum) + math.sqrt(sum_3 / FlavorNum)))
+#    print(score_1)
