@@ -3,7 +3,6 @@ import re
 import math
 import copy
 from matplotlib import pyplot as plt
-from hmmlearn.hmm import GaussianHMM
 from sklearn import linear_model
 from sklearn.neural_network import MLPRegressor
 
@@ -282,7 +281,6 @@ def listSigmoid(dataset):
 # Sigmoid反变换
 # =============================================================================
 def asigmoid(value):
-    print(value)
     return -math.log((1.0 / value) - 1)
 
 def listAsigmoid(dataset):
@@ -329,6 +327,22 @@ if __name__ == '__main__':
             x[i].append(finalData[i][j-N:j-1])
             y[i].append(finalData[i][j-1])
     
+# 改变
+# 高斯核局部加权
+    for i in range(TOTAL_FLAVOR):
+        for j in range(len(x[i])):
+            for k in range(len(x[i][j])):
+                p = 0.0044
+                w = math.exp(- math.pow(x[i][j][k] - x[i][j][-1], 2) / 2 * p)
+                x[i][j][k] = w * x[i][j][k]
+# 追加
+#    for i in range(TOTAL_FLAVOR):
+#        for j in range(len(x[i])):
+#            x[i][j].append(x[i][j][-1] * x[i][j][-1])
+#            x[i][j].append(1)
+#            for k in range(len(x[i][j])):
+#                x[i][j].append(sigmoid(x[i][j][k]))
+            
     print('Final Data:')
     print('Total diffs: ' + str(len(finalData[0])))
     for i in range(TOTAL_FLAVOR):
@@ -348,13 +362,13 @@ if __name__ == '__main__':
 # =============================================================================
 #     Neural network拟合
 # =============================================================================
-    clf = []
-    for i in range(TOTAL_FLAVOR):
-        clf.append(MLPRegressor(solver='sgd',
-                           alpha=1e-5,
-                           hidden_layer_sizes=(40, 50),
-                           random_state=0))
-        clf[i].fit(x[i][:time_split], y[i][:time_split])
+#    clf = []
+#    for i in range(TOTAL_FLAVOR):
+#        clf.append(MLPRegressor(solver='sgd',
+#                           alpha=1e-5,
+#                           hidden_layer_sizes=(100, 40),
+#                           random_state=0))
+#        clf[i].fit(x[i][:time_split], y[i][:time_split])
     
 # =============================================================================
 #     HMM拟合
