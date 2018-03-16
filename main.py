@@ -3,6 +3,7 @@ import re
 import math
 import copy
 from matplotlib import pyplot as plt
+from hmmlearn.hmm import GaussianHMM
 from sklearn import linear_model
 from sklearn.neural_network import MLPRegressor
 
@@ -32,7 +33,7 @@ N = 7
 TOTAL_FLAVOR = 15
 
 global SamplePS
-global SampleVM
+SampleVM = list()
 global DimToBeOptimized
 global HistoryTime_Begin
 global PredictTime_Begin
@@ -192,12 +193,12 @@ def readData():
     
     historyData = [[0]for i in range(TOTAL_FLAVOR)]
     for i in range(TOTAL_FLAVOR):
-        for j in range(time2val(HistoryTime_Begin), time2val(PredictTime_Begin)):
+        for j in range(time2val(HistoryTime_Begin), time2val(PredictTime_Begin) - 1):
             historyData[i].append(0)
             
     testData = [[0]for i in range(TOTAL_FLAVOR)]
     for i in range(TOTAL_FLAVOR):
-        for j in range(time2val(PredictTime_Begin), time2val(PredictTime_End)+1):
+        for j in range(time2val(PredictTime_Begin), time2val(PredictTime_End) - 1):
             testData[i].append(0)
             
     # Read history data
@@ -220,9 +221,9 @@ def readData():
                 
     # Print history data
     print('History data: ')
-    print('Total diffs: ' + str(value+1))
+    print('Total diffs: ' + str(len(historyData[0])))
     for i in range(TOTAL_FLAVOR):
-        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(historyData[i])) + ')\n' + str(historyData[i]))
+        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(historyData[i])) + ')\n' + str(historyData[i]) + '\n')
         
     # Read test data
     for line in open(TEST, encoding='utf-8'):
@@ -231,7 +232,7 @@ def readData():
         tempFlavor = int(line[Space_1+7:Space_2])
         tempTime = line[Space_2+1:].replace('\n', '')
         if tempTime is not None:
-            value = time2val(tempTime) - time2val(PredictTime_Begin)
+            value = time2val(tempTime) - time2val(PredictTime_Begin) - 1
             if tempFlavor <= TOTAL_FLAVOR:
                 testData[tempFlavor-1][value] += 1
             else:
@@ -244,25 +245,78 @@ def readData():
                 
     # Print history data
     print('Test data: ')
-    print('Total diffs: ' + str(value+1))
-    for i in range(15):
-        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(testData[i])) + ')\n' + str(testData[i]))
-    print('\n')
+    print('Total diffs: ' + str(len(testData[0])))
+    for i in range(TOTAL_FLAVOR):
+        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(testData[i])) + ')\n' + str(testData[i]) + '\n')
 #    plt.plot(historyData[2])
     return historyData, testData
 
+# =============================================================================
+# 差分数据
+# =============================================================================
+def difference(dataset, interval=1):
+    diff = list()
+    for i in range(interval, len(dataset)):
+        value = dataset[i] - dataset[i-interval]
+        diff.append(value)
+    return diff
+
+# =============================================================================
+# Sigmoid变换
+# =============================================================================
+def sigmoid(value):
+    
+    return (1.0 / (1 + math.exp(-value)))
+
+def listSigmoid(dataset):
+    sig = list()
+    for i in range(len(dataset)):
+        if dataset[i] is not 0:
+            value = sigmoid(dataset[i])
+            sig.append(value)
+        else:
+            sig.append(0)
+    return sig
+ 
+# =============================================================================
+# Sigmoid反变换
+# =============================================================================
+def asigmoid(value):
+    print(value)
+    return -math.log((1.0 / value) - 1)
+
+def listAsigmoid(dataset):
+    sig = list()
+    for i in range(len(dataset)):
+        if dataset[i] is not 0:
+            value = asigmoid(dataset[i])
+            sig.append(value)
+        else:
+            sig.append(0)
+    return sig
 
 # =============================================================================
 # Main
 # =============================================================================
 if __name__ == '__main__':
-    
+
+
     trainData, testData = readData()
+    
+#    for i in range(TOTAL_FLAVOR):
+#        trainData[i] = listSigmoid(trainData[i])
+#        testData[i] = listSigmoid(testData[i])
+
     mixedData = copy.deepcopy(trainData)
     for i in range(TOTAL_FLAVOR):
         for j in range(len(testData[i])):
             mixedData[i].append(testData[i][j])
     
+    print('Mixed Data:')
+    print('Total diffs: ' + str(len(mixedData[0])))
+    for i in range(TOTAL_FLAVOR):
+        print('Flavor' + str(i+1) + ':\n' + str(mixedData[i]) + '\n')
+        
     finalData = copy.deepcopy(mixedData)
     time_split = time2val(PredictTime_Begin)
     
@@ -270,18 +324,19 @@ if __name__ == '__main__':
     y = [[]for i in range(TOTAL_FLAVOR)]
     
     for i in range(TOTAL_FLAVOR):
-        for j in range(N, len(mixedData[i])-1):
-            finalData[i][j+1] = sum(mixedData[i][j-N:j-1])
-            x[i].append(finalData[i][j-N:j])
-            y[i].append(finalData[i][j+1])
-            
+        for j in range(N, len(mixedData[i])+1):
+            finalData[i][j-1] = sum(mixedData[i][j-N:j])
+            x[i].append(finalData[i][j-N:j-1])
+            y[i].append(finalData[i][j-1])
+    
     print('Final Data:')
+    print('Total diffs: ' + str(len(finalData[0])))
     for i in range(TOTAL_FLAVOR):
-        print('Flavor' + str(i+1) + ':\n' + str(finalData[i]))
+        print('Flavor' + str(i+1) + ':\n' + str(finalData[i]) + '\n')
         
-    print('X:')
-    print(x[0])
-
+    print('X:\n')
+    print(x[1])
+    
 # =============================================================================
 #     LSE拟合
 # =============================================================================
@@ -297,10 +352,17 @@ if __name__ == '__main__':
     for i in range(TOTAL_FLAVOR):
         clf.append(MLPRegressor(solver='sgd',
                            alpha=1e-5,
-                           hidden_layer_sizes=(200, 200),
+                           hidden_layer_sizes=(40, 50),
                            random_state=0))
         clf[i].fit(x[i][:time_split], y[i][:time_split])
     
+# =============================================================================
+#     HMM拟合
+# =============================================================================
+#    clf = []
+#    for i in range(TOTAL_FLAVOR):
+#        clf.append(GaussianHMM(n_components=5, covariance_type='diag', n_iter=4000).fit(x[i]))
+        
 # =============================================================================
 #     预测
 # =============================================================================
@@ -310,14 +372,17 @@ if __name__ == '__main__':
     sum_2 = 0
     sum_3 = 0
     
-    for i in range(FlavorNum):
+    for i in range(TOTAL_FLAVOR):
    
-        y_predict.append(clf[i].predict(x[i][time_split+1:]))
+        y_predict.append(clf[i].predict(x[i][time_split:]))
     
-        if y_predict[i][0] < 0:
-            y_predict[i][0] = 0
-        else:
-            y_predict[i][0] = round(y_predict[i][0])
+#        if y_predict[i][0] < 0:
+#            y_predict[i][0] = 0
+#        else:
+#            y_predict[i][0] = round(y_predict[i][0])
+        
+#        y[i][-1] = asigmoid(y[i][-1])
+#        y_predict[i][0] = asigmoid(y_predict[i][0])
         
         print('Flavor' + str(i+1) + ':')
         print('Prediction: ' + str(y_predict[i][0]) + '\nActual: ' + str(y[i][-1]) + '\n')
