@@ -7,38 +7,38 @@ from matplotlib import pyplot as plt
 from sklearn import linear_model
 from sklearn.neural_network import MLPRegressor
 
+from lstm import LSTM
+
 # =============================================================================
 # Number of days of every month
 # =============================================================================
-Month = dict()
-Month[1] = 31
-Month[2] = 30
-Month[3] = 31
-Month[4] = 30
-Month[5] = 31
-Month[6] = 30
-Month[7] = 31
-Month[8] = 31
-Month[9] = 30
-Month[10] = 31
-Month[11] = 30
-Month[12] = 31
+month = dict()
+month[1] = 31
+month[2] = 30
+month[3] = 31
+month[4] = 30
+month[5] = 31
+month[6] = 30
+month[7] = 31
+month[8] = 31
+month[9] = 30
+month[10] = 31
+month[11] = 30
+month[12] = 31
 
-INPUT = './input_5flavors_cpu_7days.txt.'
-TEST = './TestData_2015.2.20_2015.2.27.txt'
-TRAIN = 'TrainData_2015.1.1_2015.2.19.txt'
+input_path = './input_5flavors_cpu_7days.txt.'
+test_path = './TestData_2015.2.20_2015.2.27.txt'
+train_path = 'TrainData_2015.1.1_2015.2.19.txt'
 
-H = 24
-N = 7
-TOTAL_FLAVOR = 15
+total_flavor = 15
 
-global SamplePS
-SampleVM = list()
-global DimToBeOptimized
-global HistoryTime_Begin
-global PredictTime_Begin
-global PredictTime_End
-global FlavorNum
+global sample_ps
+sample_vm = list()
+global dim_to_be_optimized
+global history_begin
+global predict_begin
+global predict_end
+global flavor_num
 
 # =============================================================================
 # physical server class definition
@@ -120,10 +120,10 @@ def time2val(time):
     value = 0
     mm -= 1
     for i in range(0, mm):
-        value += Month[i+1] * 24
+        value += month[i+1] * 24
     value += (dd-1) * 24 + hh
     
-    return int(value / H)
+    return int(value / 24)
         
 
 # =============================================================================
@@ -131,19 +131,19 @@ def time2val(time):
 # =============================================================================
 def readData():
     
-    global SamplePS
-    global SampleVM
-    global DimToBeOptimized
-    global HistoryTime_Begin
-    global PredictTime_Begin
-    global PredictTime_End
-    global FlavorNum
+    global sample_ps
+    global sample_vm
+    global dim_to_be_optimized
+    global history_begin
+    global predict_begin
+    global predict_end
+    global flavor_num
     
     # Read input file
     nowBlock = 0
-    FlavorNum = 0
+    flavor_num = 0
     flavorList = []
-    f = open(INPUT, 'r+', encoding='utf-8')
+    f = open(input_path, 'r+', encoding='utf-8')
     for line in f:
         if line is not '\n':
             if nowBlock == 0:
@@ -152,13 +152,13 @@ def readData():
                 CPU = int(line[0:Space_1])
                 MEM = int(line[Space_1:Space_2])
                 STO = int(line[Space_2:])
-                SamplePS = PhysicalServer(CPU, MEM, STO)
-                SamplePS.state()
+                sample_ps = PhysicalServer(CPU, MEM, STO)
+                sample_ps.state()
                 nowBlock += 1
             else:
                 if nowBlock == 1:
-                    FlavorNum = int(line)
-                    for i in range(FlavorNum):
+                    flavor_num = int(line)
+                    for i in range(flavor_num):
                         line = f.readline()
                         Space_1 = line.find(' ')
                         Space_2 = line.find(' ', Space_1+1)
@@ -167,49 +167,49 @@ def readData():
                         CPU = int(line[Space_1:Space_2])
                         MEM = int(line[Space_2:Space_3])
                         tempVM = VirtualMachine(NUM, CPU, MEM)
-                        SampleVM.append(tempVM)
+                        sample_vm.append(tempVM)
                         flavorList.append(NUM)
                         tempVM.state()
                     nowBlock += 1
                 else:
                     if nowBlock == 2:
-                        DimToBeOptimized = line.replace('\n', '')
-                        print('The dimension to be optimized is: ' + DimToBeOptimized)
+                        dim_to_be_optimized = line.replace('\n', '')
+                        print('The dimension to be optimized is: ' + dim_to_be_optimized)
                         nowBlock += 1
                     else:
                         if nowBlock == 3:
-                            PredictTime_Begin = line.replace('\n', '')
-                            PredictTime_End = f.readline().replace('\n', '')
-                            print('Predict time begin at: ' + PredictTime_Begin)
-                            print('Predict time end at: ' + PredictTime_End)
+                            predict_begin = line.replace('\n', '')
+                            predict_end = f.readline().replace('\n', '')
+                            print('Predict time begin at: ' + predict_begin)
+                            print('Predict time end at: ' + predict_end)
                             print('\n')
             
     
     # Read the beginning time
-    line = open(TRAIN, encoding='utf-8').readline()
+    line = open(train_path, encoding='utf-8').readline()
     Space_1 = line.find('\t')
     Space_2 = line.find('\t', Space_1+1)
-    HistoryTime_Begin = line[Space_2+1:].replace('\n', '')
+    history_begin = line[Space_2+1:].replace('\n', '')
     
-    historyData = [[0]for i in range(TOTAL_FLAVOR)]
-    for i in range(TOTAL_FLAVOR):
-        for j in range(time2val(HistoryTime_Begin), time2val(PredictTime_Begin) - 1):
+    historyData = [[0]for i in range(total_flavor)]
+    for i in range(total_flavor):
+        for j in range(time2val(history_begin), time2val(predict_begin) - 1):
             historyData[i].append(0)
             
-    futureData = [[0]for i in range(TOTAL_FLAVOR)]
-    for i in range(TOTAL_FLAVOR):
-        for j in range(time2val(PredictTime_Begin), time2val(PredictTime_End) - 1):
+    futureData = [[0]for i in range(total_flavor)]
+    for i in range(total_flavor):
+        for j in range(time2val(predict_begin), time2val(predict_end) - 1):
             futureData[i].append(0)
             
     # Read history data
-    for line in open(TRAIN, encoding='utf-8'):
+    for line in open(train_path, encoding='utf-8'):
         Space_1 = line.find('\t')
         Space_2 = line.find('\t', Space_1+1)
         tempFlavor = int(line[Space_1+7:Space_2])
         tempTime = line[Space_2+1:].replace('\n', '')
         if tempTime is not None:
             value = time2val(tempTime)
-            if tempFlavor <= TOTAL_FLAVOR:
+            if tempFlavor <= total_flavor:
                 historyData[tempFlavor-1][value] += 1
             else:
                 None
@@ -222,18 +222,18 @@ def readData():
     # Print history data
     print('History data: ')
     print('Total diffs: ' + str(len(historyData[0])))
-    for i in range(TOTAL_FLAVOR):
+    for i in range(total_flavor):
         print('Flavor' + str(i+1) + ': (Total: ' + str(sum(historyData[i])) + ')\n' + str(historyData[i]) + '\n')
         
     # Read test data
-    for line in open(TEST, encoding='utf-8'):
+    for line in open(test_path, encoding='utf-8'):
         Space_1 = line.find('\t')
         Space_2 = line.find('\t', Space_1+1)
         tempFlavor = int(line[Space_1+7:Space_2])
         tempTime = line[Space_2+1:].replace('\n', '')
         if tempTime is not None:
-            value = time2val(tempTime) - time2val(PredictTime_Begin) - 1
-            if tempFlavor <= TOTAL_FLAVOR:
+            value = time2val(tempTime) - time2val(predict_begin) - 1
+            if tempFlavor <= total_flavor:
                 futureData[tempFlavor-1][value] += 1
             else:
                 None
@@ -246,15 +246,26 @@ def readData():
     # Print history data
     print('Future data: ')
     print('Total diffs: ' + str(len(futureData[0])))
-    for i in range(TOTAL_FLAVOR):
+    for i in range(total_flavor):
         print('Flavor' + str(i+1) + ': (Total: ' + str(sum(futureData[i])) + ')\n' + str(futureData[i]) + '\n')
 #    plt.plot(historyData[2])
     return historyData, futureData
 
 # =============================================================================
+# 数据加和
+# =============================================================================
+def dataAddUp(dataset, n=7):
+    # 以七天为单位加和
+    dataset_copy = copy.deepcopy(dataset)
+    for i in range(total_flavor):
+        for j in range(n-1, len(dataset[i])):
+            historyData[i][j] = sum(dataset_copy[i][j-n+1:j])
+    return dataset
+            
+# =============================================================================
 # 差分数据
 # =============================================================================
-def difference(dataset, interval=1):
+def dataDifference(dataset, interval=1):
     diff = list()
     for i in range(interval, len(dataset)):
         value = dataset[i] - dataset[i-interval]
@@ -299,86 +310,13 @@ def listAsigmoid(dataset):
 # =============================================================================
 if __name__ == '__main__':
 
-
     historyData, futureData = readData()
-    
-    # 以七天为单位加和
-    historyData_copy = copy.deepcopy(historyData)
-    for i in range(TOTAL_FLAVOR):
-        for j in range(N-1, len(historyData[i])):
-            historyData[i][j] = sum(historyData_copy[i][j-N+1:j])
-    print('History data: ')
-    print('Total diffs: ' + str(len(historyData[0])))
-    for i in range(TOTAL_FLAVOR):
-        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(historyData[i])) + ')\n' + str(historyData[i]) + '\n')
-        
-    # 抽取特征矩阵
-    x = [[]for i in range(TOTAL_FLAVOR)]
-    y = [[]for i in range(TOTAL_FLAVOR)]
-    for i in range(TOTAL_FLAVOR):
-        for j in range(N-1, len(historyData[i])-N):
-            x[i].append(historyData[i][j+1:j+N])
-            y[i].append(historyData[i][j+N])
+    data = [[]for i in range(total_flavor)]
+    for i in range(total_flavor):
+        for j in range(len(historyData[i])):
+            data[i].append(historyData[i][j])
+        for j in range(len(futureData[i])):
+            data[i].append(futureData[i][j])
             
-    # 高斯核局部加权
-#    for i in range(TOTAL_FLAVOR):
-#        for j in range(len(x[i])):
-#            for k in range(len(x[i][j])):
-#                p = 0.0046
-#                w = math.exp(- math.pow(x[i][j][k] - x[i][j][-1], 2) / 2 * p)
-#                x[i][j][k] = w * x[i][j][k]
-                
-# 追加
-#    for i in range(TOTAL_FLAVOR):
-#        for j in range(len(x[i])):
-#            x[i][j].append(x[i][j][-1] * x[i][j][-1])
-#            x[i][j].append(1)
-#            for k in range(len(x[i][j])):
-#                x[i][j].append(sigmoid(x[i][j][k]))
-    
-    # LSE拟合
-    lse_clf = []
-    for i in range(TOTAL_FLAVOR):
-        lse_clf.append(linear_model.LinearRegression())
-        lse_clf[i].fit(x[i][:], y[i][:])
-        
-    # Neural network拟合
-    nn_clf = []
-    for i in range(TOTAL_FLAVOR):
-        nn_clf.append(MLPRegressor(solver='sgd',
-                           alpha=1e-5,
-                           hidden_layer_sizes=(2, 5),
-                           random_state=0))
-        nn_clf[i].fit(x[i][:], y[i][:])
-        
-    # 预测
-    for i in range(TOTAL_FLAVOR):
-        for j in range(N):
-            historyData[i].append(lse_clf[i].predict(x[i][-1:])[0])
-            x[i].append(historyData[i][-N:-1])
-        
-    for i in range(TOTAL_FLAVOR):
-        print('Flavor' + str(i+1) + ':')
-        print('Prediction: ' + str(historyData[i][-7]) + '\nActual: ' + str(y[i][-7]) + '\n')
-        
-    print(np.array(historyData))
-    
-#    MODE = 'score'
-#    MODE = 'graphical'
-    
-#    for i in range(TOTAL_FLAVOR):
-#        
-#        if MODE is 'graphical':
-#            y_predict.append(lse_clf[i].predict(x[i]))
-#            plt.figure(i)
-#            plt.plot(y_predict[i])
-#            plt.plot(finalData[i][N-1:time_split])
-#            
-#        else:
-#            sum_1 += math.pow((y_predict[i] - y[i][-t]), 2)
-#            sum_2 += math.pow((y_predict[i]), 2)
-#            sum_3 += math.pow(y[i][-t], 2)
-#        
-#    
-#    score_1 = (1 - math.sqrt(sum_1 / FlavorNum) / (math.sqrt(sum_2 / FlavorNum) + math.sqrt(sum_3 / FlavorNum)))
-#    print(score_1)
+    lstm = LSTM(data)
+    lstm.data_preprocess(50, 6, 0, 50)
