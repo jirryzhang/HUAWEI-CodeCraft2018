@@ -8,7 +8,7 @@ input_size = 1
 hidden_unit = 100
 output_size = 1
 alpha = 0.006
-time_step = 6
+time_step = 7
 standardlization = 1
 x_train, y_train = [], []
 x_test, y_test = [], []
@@ -22,8 +22,8 @@ class LSTM:
         self.w_in = tf.Variable(tf.random_normal([input_size, hidden_unit]))
         self.w_out = tf.Variable(tf.random_normal([hidden_unit, output_size]))
         
-        self.b_in = tf.Variable(tf.constant(0.1, shape = [hidden_unit, ]))
-        self.b_out = tf.Variable(tf.constant(0.1, shape = [output_size, ]))
+        self.b_in = tf.Variable(tf.constant(0.1, shape=[hidden_unit, ]))
+        self.b_out = tf.Variable(tf.constant(0.1, shape=[output_size, ]))
         
     def data_preprocess(self, batch_size=50, train_begin=0, train_end=50):
         global x_train, y_train
@@ -53,13 +53,13 @@ class LSTM:
         X = tf.placeholder(tf.float32, [None, time_step, input_size])
         y = tf.placeholder(tf.float32, [None, 1, output_size])
         
-#        layer_in_x = tf.reshape(X, [-1, input_size])     
-#        layer_in_y = tf.matmul(self.w_in, layer_in_x) + self.b_in
-#        layer_in_y = tf.reshape(layer_in_y, [-1, time_step, input_size])
+        # layer_in_x = tf.reshape(X, [-1, input_size])
+        # layer_in_y = tf.matmul(self.w_in, layer_in_x) + self.b_in
+        # layer_in_y = tf.reshape(layer_in_y, [-1, time_step, input_size])
         
         cell = tf.contrib.rnn.BasicLSTMCell(num_units=hidden_unit,
-                                            activation=tf.nn.relu,
-                                            forget_bias=1.0,
+                                            activation=tf.nn.sigmoid,
+                                            forget_bias=1,
                                             state_is_tuple=True)
         
         rnn_output, final_state = tf.nn.dynamic_rnn(cell,
@@ -86,6 +86,5 @@ class LSTM:
                     print(ep, '\tMSE: ', mse)
             y_pred = sess.run(output, feed_dict = {X: x_train})
             print(sum(y_pred) / standardlization)
-            print(y_pred.shape)
-    
+
     

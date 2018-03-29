@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*-
+ # -*- coding: utf-8 -*-
 import re
 import math
 import copy
 import numpy as np
 from matplotlib import pyplot as plt
-from sklearn import linear_model
-from sklearn.neural_network import MLPRegressor
 
-from lstm import LSTM
+from tf_lstm import LSTM
+from keras_lstm import mLSTM
 
 # =============================================================================
 # Number of days of every month
@@ -31,6 +30,7 @@ test_path = './TestData_2015.2.20_2015.2.27.txt'
 train_path = 'TrainData_2015.1.1_2015.2.19.txt'
 
 total_flavor = 15
+standardlization = 1
 
 global sample_ps
 sample_vm = list()
@@ -140,44 +140,44 @@ def readData():
     global flavor_num
     
     # Read input file
-    nowBlock = 0
+    now_block = 0
     flavor_num = 0
-    flavorList = []
+    flavor_list = []
     f = open(input_path, 'r+', encoding='utf-8')
     for line in f:
         if line is not '\n':
-            if nowBlock == 0:
-                Space_1 = line.find(' ')
-                Space_2 = line.find(' ', Space_1+1)
-                CPU = int(line[0:Space_1])
-                MEM = int(line[Space_1:Space_2])
-                STO = int(line[Space_2:])
+            if now_block == 0:
+                space_1 = line.find(' ')
+                space_2 = line.find(' ', space_1+1)
+                CPU = int(line[0:space_1])
+                MEM = int(line[space_1:space_2])
+                STO = int(line[space_2:])
                 sample_ps = PhysicalServer(CPU, MEM, STO)
                 sample_ps.state()
-                nowBlock += 1
+                now_block += 1
             else:
-                if nowBlock == 1:
+                if now_block == 1:
                     flavor_num = int(line)
                     for i in range(flavor_num):
                         line = f.readline()
-                        Space_1 = line.find(' ')
-                        Space_2 = line.find(' ', Space_1+1)
-                        Space_3 = line.find('\n', Space_2+1)
-                        NUM = int(line[6:Space_1])
-                        CPU = int(line[Space_1:Space_2])
-                        MEM = int(line[Space_2:Space_3])
+                        space_1 = line.find(' ')
+                        space_2 = line.find(' ', space_1+1)
+                        space_3 = line.find('\n', space_2+1)
+                        NUM = int(line[6:space_1])
+                        CPU = int(line[space_1:space_2])
+                        MEM = int(line[space_2:space_3])
                         tempVM = VirtualMachine(NUM, CPU, MEM)
                         sample_vm.append(tempVM)
-                        flavorList.append(NUM)
+                        flavor_list.append(NUM)
                         tempVM.state()
-                    nowBlock += 1
+                    now_block += 1
                 else:
-                    if nowBlock == 2:
+                    if now_block == 2:
                         dim_to_be_optimized = line.replace('\n', '')
                         print('The dimension to be optimized is: ' + dim_to_be_optimized)
-                        nowBlock += 1
+                        now_block += 1
                     else:
-                        if nowBlock == 3:
+                        if now_block == 3:
                             predict_begin = line.replace('\n', '')
                             predict_end = f.readline().replace('\n', '')
                             print('Predict time begin at: ' + predict_begin)
@@ -187,89 +187,90 @@ def readData():
     
     # Read the beginning time
     line = open(train_path, encoding='utf-8').readline()
-    Space_1 = line.find('\t')
-    Space_2 = line.find('\t', Space_1+1)
-    history_begin = line[Space_2+1:].replace('\n', '')
+    space_1 = line.find('\t')
+    space_2 = line.find('\t', space_1+1)
+    history_begin = line[space_2+1:].replace('\n', '')
     
-    historyData = [[0]for i in range(total_flavor)]
+    history_data = [[.0]for i in range(total_flavor)]
     for i in range(total_flavor):
         for j in range(time2val(history_begin), time2val(predict_begin) - 1):
-            historyData[i].append(0)
+            history_data[i].append(0)
             
-    futureData = [[0]for i in range(total_flavor)]
+    future_data = [[.0]for i in range(total_flavor)]
     for i in range(total_flavor):
         for j in range(time2val(predict_begin), time2val(predict_end) - 1):
-            futureData[i].append(0)
+            future_data[i].append(0)
             
     # Read history data
     for line in open(train_path, encoding='utf-8'):
-        Space_1 = line.find('\t')
-        Space_2 = line.find('\t', Space_1+1)
-        tempFlavor = int(line[Space_1+7:Space_2])
-        tempTime = line[Space_2+1:].replace('\n', '')
-        if tempTime is not None:
-            value = time2val(tempTime)
-            if tempFlavor <= total_flavor:
-                historyData[tempFlavor-1][value] += 1
+        space_1 = line.find('\t')
+        space_2 = line.find('\t', space_1+1)
+        temp_flavor = int(line[space_1+7:space_2])
+        temp_time = line[space_2+1:].replace('\n', '')
+        if temp_time is not None:
+            value = time2val(temp_time)
+            if temp_flavor <= total_flavor:
+                history_data[temp_flavor-1][value] += 1 * standardlization
             else:
-                None
+                pass
 #                print('Flavor data error.\n')
-#                print('Now flavor: ' + str(tempFlavor))
+#                print('Now flavor: ' + str(temp_flavor))
         else:
             print('Time data error.\n')
             
                 
     # Print history data
     print('History data: ')
-    print('Total diffs: ' + str(len(historyData[0])))
+    print('Total diffs: ' + str(len(history_data[0])))
     for i in range(total_flavor):
-        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(historyData[i])) + ')\n' + str(historyData[i]) + '\n')
+        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(history_data[i])) + ')\n' + str(history_data[i]) + '\n')
         
     # Read test data
     for line in open(test_path, encoding='utf-8'):
-        Space_1 = line.find('\t')
-        Space_2 = line.find('\t', Space_1+1)
-        tempFlavor = int(line[Space_1+7:Space_2])
-        tempTime = line[Space_2+1:].replace('\n', '')
-        if tempTime is not None:
-            value = time2val(tempTime) - time2val(predict_begin) - 1
-            if tempFlavor <= total_flavor:
-                futureData[tempFlavor-1][value] += 1
+        space_1 = line.find('\t')
+        space_2 = line.find('\t', space_1+1)
+        temp_flavor = int(line[space_1+7:space_2])
+        temp_time = line[space_2+1:].replace('\n', '')
+        if temp_time is not None:
+            value = time2val(temp_time) - time2val(predict_begin) - 1
+            if temp_flavor <= total_flavor:
+                future_data[temp_flavor-1][value] += 1 * standardlization
             else:
-                None
+                pass
 #                print('Flavor data error.\n')
-#                print('Now flavor: ' + str(tempFlavor))
+#                print('Now flavor: ' + str(temp_flavor))
         else:
             print('Time data error.\n')
             
                 
     # Print history data
     print('Future data: ')
-    print('Total diffs: ' + str(len(futureData[0])))
+    print('Total diffs: ' + str(len(future_data[0])))
     for i in range(total_flavor):
-        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(futureData[i])) + ')\n' + str(futureData[i]) + '\n')
-#    plt.plot(historyData[2])
-    return historyData, futureData
+        print('Flavor' + str(i+1) + ': (Total: ' + str(sum(future_data[i])) + ')\n' + str(future_data[i]) + '\n')
+#    plt.plot(history_data[2])
+        
+    return history_data, future_data
 
 # =============================================================================
 # 数据加和
 # =============================================================================
-def dataAddUp(dataset, n=7):
-    # 以七天为单位加和
+def data_addup(dataset, n=7):
     dataset_copy = copy.deepcopy(dataset)
     for i in range(total_flavor):
         for j in range(n-1, len(dataset[i])):
-            historyData[i][j] = sum(dataset_copy[i][j-n+1:j])
+            dataset[i][j] = sum(dataset_copy[i][j-n+1:j+1])
     return dataset
             
 # =============================================================================
 # 差分数据
 # =============================================================================
-def dataDifference(dataset, interval=1):
-    diff = list()
-    for i in range(interval, len(dataset)):
-        value = dataset[i] - dataset[i-interval]
-        diff.append(value)
+def data_difference(dataset, interval=1):
+    diff = [[]for i in range(total_flavor)]
+    for i in range(total_flavor):
+        for j in range(interval, len(dataset[i])):
+            value = dataset[i][j] - dataset[i][j-interval]
+            diff[i].append(value)
     return diff
 
 # =============================================================================
@@ -279,7 +280,7 @@ def sigmoid(value):
     
     return (1.0 / (1 + math.exp(-value)))
 
-def listSigmoid(dataset):
+def list_sigmoid(dataset):
     sig = list()
     for i in range(len(dataset)):
         if dataset[i] is not 0:
@@ -295,7 +296,7 @@ def listSigmoid(dataset):
 def asigmoid(value):
     return -math.log((1.0 / value) - 1)
 
-def listAsigmoid(dataset):
+def list_asigmoid(dataset):
     sig = list()
     for i in range(len(dataset)):
         if dataset[i] is not 0:
@@ -310,13 +311,16 @@ def listAsigmoid(dataset):
 # =============================================================================
 if __name__ == '__main__':
 
-    historyData, futureData = readData()
+    history_data, future_data = readData()
     data = [[]for i in range(total_flavor)]
     for i in range(total_flavor):
-        for j in range(len(historyData[i])):
-            data[i].append(historyData[i][j])
-        for j in range(len(futureData[i])):
-            data[i].append(futureData[i][j])
-            
-    lstm = LSTM(data)
-    lstm.data_preprocess(50, 6, 0, 50)
+        for j in range(len(history_data[i])):
+            data[i].append(history_data[i][j])
+        for j in range(len(future_data[i])):
+            data[i].append(future_data[i][j])
+
+    data = data_addup(data)
+    # data = data_difference(data)
+
+    lstm = mLSTM(data[1])
+    lstm.lstm_model()
